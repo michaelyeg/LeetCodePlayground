@@ -248,12 +248,28 @@ After every operation, add the current state of the text to the resulting array.
 """
 
 
+# REDO can only be performed if the document has not been modified since the last UNDO operation.
+def can_perform_redo(queries, q, temp_text, result):
+    q -= 1
+    while q >= 0:
+        if queries[q] == 'UNDO':
+            break
+        q -= 1
+    if q == 0:
+        return False
+    return temp_text == result[q]
+
+
 def solution(queries):
     result = []
     temp_text = ''
     cursor = 0
+    cursor_history = []
     select_text = ''
     paste_text = ''
+    # Used to track for undo & redo
+    revert_pos = None
+    undo_hist = []
     for q in range(len(queries)):
         op = queries[q][0]
         match op:
@@ -262,7 +278,6 @@ def solution(queries):
                     temp_text = temp_text[0: cursor:] + queries[q][1] + temp_text[cursor::]
                 else:
                     temp_text = temp_text.replace(select_text, queries[q][1])
-                    select_text = ''
                 cursor += len(queries[q][1])
             case 'MOVE':
                 cursor = moveCursor(cursor, queries[q][1], temp_text)
@@ -272,7 +287,6 @@ def solution(queries):
                 else:
                     temp_text = temp_text.replace(select_text, '')
                     cursor += len(select_text)
-                    select_text = ''
             case 'SELECT':
                 if int(queries[q][1]) < 0:
                     left = 0
@@ -299,7 +313,27 @@ def solution(queries):
                 else:
                     temp_text = temp_text[0: cursor:] + paste_text + temp_text[cursor::]
                     cursor += len(select_text)
+            case 'UNDO':
+                # Look for next previous result which is different from result[-1]
+                if revert_pos is not None:
+                    revert_pos -= 1
+                else:
+                    revert_pos = q-2
+                while result[revert_pos] == result[q-1] and revert_pos > 1:
+                    revert_pos -= 1
+                if revert_pos == 0 and result[revert_pos] == result[q-1]:
+                    temp_text = ""
+                else:
+                    temp_text = result[revert_pos]
+                cursor = cursor_history[revert_pos]
+                undo_hist.append(q)
+            case 'REDO':
+                if can_perform_redo(queries, q, temp_text, result):
+                    revert_pos += 1
+                    temp_text = result[revert_pos]
+                    cursor = cursor_history[revert_pos]
         result.append(temp_text)
+        cursor_history.append(cursor)
         q += 1
     # ic(result)
     return result
@@ -332,4 +366,11 @@ assert solution([["APPEND", "Hello cruel world!"], ["SELECT", "5", "11"], ["APPE
 
 assert solution([["APPEND", "Hello, world!"], ["SELECT", "5", "12"], ["CUT"], ["MOVE", "4"], ["PASTE"], ["PASTE"], ["SELECT", "4", "19"], ["PASTE"]]) == [
     "Hello, world!", "Hello, world!", "Hello!", "Hello!", "Hell, worldo!", "Hell, world, worldo!", "Hell, world, worldo!", "Hell, world!"
+]
+# Level 3
+assert solution([["APPEND", "Hello, world!"], ["SELECT", "7", "12"], ["FORWARD_DELETE"], ["UNDO"], ["APPEND", "you"]]) == [
+    "Hello, world!", "Hello, world!", "Hello, !", "Hello, world!", "Hello, you!"
+]
+assert solution([["APPEND", "Hello, world!"], ["SELECT", "7", "12"], ["FORWARD_DELETE"], ["MOVE", "6"], ["UNDO"], ["UNDO"], ["REDO"], ["REDO"]]) == [
+    "Hello, world!", "Hello, world!", "Hello, !", "Hello, !", "Hello, world!", "", "Hello, world!", "Hello, !"
 ]
