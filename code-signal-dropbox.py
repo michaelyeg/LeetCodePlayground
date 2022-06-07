@@ -262,78 +262,86 @@ def can_perform_redo(queries, q, temp_text, result):
 
 def solution(queries):
     result = []
-    temp_text = ''
-    cursor = 0
-    cursor_history = []
     select_text = ''
     paste_text = ''
     # Used to track for undo & redo
     revert_pos = None
-    undo_hist = []
+    # Use dictionary to store doc_name => document
+    documents = {'default': Document()}
+    # index for current document
+    doc_current = 'default'
     for q in range(len(queries)):
         op = queries[q][0]
+        cursor = documents[doc_current].cursor
         match op:
             case 'APPEND':
                 if select_text == '':
-                    temp_text = temp_text[0: cursor:] + queries[q][1] + temp_text[cursor::]
+                    documents[doc_current].text = documents[doc_current].text[0: cursor:] \
+                                                  + queries[q][1] + documents[doc_current].text[cursor::]
                 else:
-                    temp_text = temp_text.replace(select_text, queries[q][1])
-                cursor += len(queries[q][1])
+                    documents[doc_current].text = documents[doc_current].text.replace(select_text, queries[q][1])
+                # temp_text = doc_current
+                documents[doc_current].cursor += len(queries[q][1])
             case 'MOVE':
-                cursor = moveCursor(cursor, queries[q][1], temp_text)
+                documents[doc_current].cursor = moveCursor(cursor, queries[q][1], documents[doc_current].text)
             case 'FORWARD_DELETE':
-                if select_text == '' and cursor < len(temp_text):
-                    temp_text = temp_text[0: cursor:] + temp_text[cursor + 1::]
+                if select_text == '' and cursor < len(documents[doc_current].text):
+                    documents[doc_current].text = documents[doc_current].text[0: cursor:] + documents[doc_current].text[
+                                                                                            cursor + 1::]
                 else:
-                    temp_text = temp_text.replace(select_text, '')
-                    cursor += len(select_text)
+                    documents[doc_current].text = documents[doc_current].text.replace(select_text, '')
+                    documents[doc_current].cursor += len(select_text)
             case 'SELECT':
                 if int(queries[q][1]) < 0:
                     left = 0
                 else:
                     left = int(queries[q][1])
-                if int(queries[q][2]) >= len(temp_text):
-                    right = len(temp_text)-1
+                if int(queries[q][2]) >= len(documents[doc_current].text):
+                    right = len(documents[doc_current].text) - 1
                 else:
                     right = int(queries[q][2])
-                select_text = temp_text[left: right:]
+                select_text = documents[doc_current].text[left: right:]
                 # If the selection is empty, it becomes a cursor position.
                 if select_text == '':
-                    cursor = left
+                    documents[doc_current].cursor = left
             case 'CUT':
                 if select_text != '':
-                    temp_text = temp_text.replace(select_text, '')
+                    documents[doc_current].cursor = documents[doc_current].text.find(select_text) - 1
+                    documents[doc_current].text = documents[doc_current].text.replace(select_text, '')
                     paste_text = str(select_text)
                     select_text = ''
             case 'PASTE':
                 if select_text != '' and paste_text != '':
                     # Search for select_text and replace it with paste_text
-                    temp_text = temp_text.replace(select_text, paste_text)
-                    cursor += len(paste_text)
+                    documents[doc_current].text = documents[doc_current].text.replace(select_text, paste_text)
+                    documents[doc_current].cursor += len(paste_text)
                 else:
-                    temp_text = temp_text[0: cursor:] + paste_text + temp_text[cursor::]
-                    cursor += len(select_text)
+                    documents[doc_current].text = documents[doc_current].text[0: cursor:] + paste_text + \
+                                                  documents[doc_current].text[cursor::]
+                    documents[doc_current].cursor += len(select_text)
             case 'UNDO':
                 # Look for next previous result which is different from result[-1]
                 if revert_pos is not None:
                     revert_pos -= 1
                 else:
-                    revert_pos = q-2
-                while result[revert_pos] == result[q-1] and revert_pos > 1:
+                    revert_pos = q - 2
+                while result[revert_pos] == result[q - 1] and revert_pos > 1:
                     revert_pos -= 1
-                if revert_pos == 0 and result[revert_pos] == result[q-1]:
-                    temp_text = ""
+                if revert_pos == 0 and result[revert_pos] == result[q - 1]:
+                    documents[doc_current].text = ""
                 else:
-                    temp_text = result[revert_pos]
-                cursor = cursor_history[revert_pos]
-                undo_hist.append(q)
+                    documents[doc_current].text = result[revert_pos]
             case 'REDO':
-                if can_perform_redo(queries, q, temp_text, result):
+                if can_perform_redo(queries, q, documents[doc_current].text, result):
                     revert_pos += 1
-                    temp_text = result[revert_pos]
-                    cursor = cursor_history[revert_pos]
-        result.append(temp_text)
-        cursor_history.append(cursor)
+                    documents[doc_current].text = result[revert_pos]
+            case 'CREATE':
+                doc_name = queries[q][1]
+                if doc_name not in documents.keys():
+                    documents[queries[q][1]] = Document()
+            case 'SWITCH':
+                doc_current = queries[q][1]
+        result.append(documents[doc_current].text)
         q += 1
     # ic(result)
     return result
@@ -351,6 +359,11 @@ def moveCursor(index, move, text):
         return index
 
 
+class Document:
+    cursor = 0
+    text = ''
+
+
 # Test cases
 # Level 1
 assert solution([["APPEND", "Hey"], ["APPEND", " there"], ["APPEND", "!"]]) == ["Hey", "Hey there", "Hey there!"]
@@ -360,17 +373,29 @@ assert solution([["APPEND", "Hey you"], ["MOVE", "3"], ["APPEND", ","]]) == ["He
 assert solution([["APPEND", "Hello! world!"], ["MOVE", "5"], ["FORWARD_DELETE"], ["APPEND", ","]]) == [
     "Hello! world!", "Hello! world!", "Hello world!", "Hello, world!"]
 # Level 2
-assert solution([["APPEND", "Hello cruel world!"], ["SELECT", "5", "11"], ["APPEND", ","], ["SELECT", "5", "12"], ["FORWARD_DELETE"], ["SELECT", "4", "6"], ["MOVE", "1"]]) == [
-    "Hello cruel world!", "Hello cruel world!", "Hello, world!", "Hello, world!", "Hello!", "Hello!", "Hello!"
-]
+assert solution([["APPEND", "Hello cruel world!"], ["SELECT", "5", "11"], ["APPEND", ","], ["SELECT", "5", "12"],
+                 ["FORWARD_DELETE"], ["SELECT", "4", "6"], ["MOVE", "1"]]) == [
+           "Hello cruel world!", "Hello cruel world!", "Hello, world!", "Hello, world!", "Hello!", "Hello!", "Hello!"
+       ]
 
-assert solution([["APPEND", "Hello, world!"], ["SELECT", "5", "12"], ["CUT"], ["MOVE", "4"], ["PASTE"], ["PASTE"], ["SELECT", "4", "19"], ["PASTE"]]) == [
-    "Hello, world!", "Hello, world!", "Hello!", "Hello!", "Hell, worldo!", "Hell, world, worldo!", "Hell, world, worldo!", "Hell, world!"
-]
+assert solution([["APPEND", "Hello, world!"], ["SELECT", "5", "12"], ["CUT"], ["MOVE", "4"], ["PASTE"], ["PASTE"],
+                 ["SELECT", "4", "19"], ["PASTE"]]) == [
+           "Hello, world!", "Hello, world!", "Hello!", "Hello!", "Hell, worldo!", "Hell, world, worldo!",
+           "Hell, world, worldo!", "Hell, world!"
+       ]
 # Level 3
-assert solution([["APPEND", "Hello, world!"], ["SELECT", "7", "12"], ["FORWARD_DELETE"], ["UNDO"], ["APPEND", "you"]]) == [
-    "Hello, world!", "Hello, world!", "Hello, !", "Hello, world!", "Hello, you!"
-]
-assert solution([["APPEND", "Hello, world!"], ["SELECT", "7", "12"], ["FORWARD_DELETE"], ["MOVE", "6"], ["UNDO"], ["UNDO"], ["REDO"], ["REDO"]]) == [
-    "Hello, world!", "Hello, world!", "Hello, !", "Hello, !", "Hello, world!", "", "Hello, world!", "Hello, !"
-]
+assert solution(
+    [["APPEND", "Hello, world!"], ["SELECT", "7", "12"], ["FORWARD_DELETE"], ["UNDO"], ["APPEND", "you"]]) == [
+           "Hello, world!", "Hello, world!", "Hello, !", "Hello, world!", "Hello, you!"
+       ]
+assert solution(
+    [["APPEND", "Hello, world!"], ["SELECT", "7", "12"], ["FORWARD_DELETE"], ["MOVE", "6"], ["UNDO"], ["UNDO"],
+     ["REDO"], ["REDO"]]) == [
+           "Hello, world!", "Hello, world!", "Hello, !", "Hello, !", "Hello, world!", "", "Hello, world!", "Hello, !"
+       ]
+# Level 4
+assert solution(
+    [["CREATE", "document1"], ["CREATE", "document2"], ["CREATE", "document1"], ["SWITCH", "document1"],
+     ["APPEND", "Hello, world!"], ["SELECT", "7", "12"], ["CUT"], ["SWITCH", "document2"],
+     ["PASTE"], ["SWITCH", "document1"], ["FORWARD_DELETE"]]) == [
+           "", "", "", "", "Hello, world!", "Hello, world!", "Hello, !", "", "world", "Hello, !", "Hello,!"]
