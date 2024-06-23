@@ -3,25 +3,18 @@ from icecream import ic
 
 class Solution:
     def increasingTriplet(self, nums: List[int]) -> bool:
-        if len(nums) < 3 or all(x == nums[0] for x in nums): return False
-        for i in range(0, len(nums)-2):
-            j = i+1
-            k = j+1
-            while j < len(nums)-1 and k < len(nums):
-                if nums[i] < nums[j] < nums[k]: return True
-                if j == len(nums)-2 and k == len(nums)-1:
-                    break
-                if nums[i] >= nums[j]:
-                    j+=1
-                    k=j+1
-                    continue
-                if k < len(nums)-1:
-                    k+=1
-                    continue
-                if j < len(nums)-2:
-                    j+=1
-                    if k == len(nums)-1:  k=j+1
-                    continue
+        if len(nums) < 3: return False
+
+        first, second = float('inf'), float('inf')
+
+        for num in nums:
+            if num <= first:
+                first = num
+            elif num <= second:
+                second = num
+            else:
+                return True
+
         return False
 
 ic(Solution().increasingTriplet([1,2,3,4,5]))
